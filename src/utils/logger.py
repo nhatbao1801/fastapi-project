@@ -13,7 +13,7 @@ class LoggerFormatter(logging.Formatter):
     white = "\x1b[38;5;255m"
     reset = "\x1b[38;5;15m"
 
-    base_format = f"{grey}%(asctime)s | %(name)s | %(correlation_id)s | {{level_color}}%(levelname)-8s{grey} | {blue}%(module)s:%(lineno)d{grey} - {white}%(message)s"
+    base_format = f"{grey}%(asctime)s | %(name)s | {{level_color}}%(levelname)-8s{grey} | {blue}%(module)s:%(lineno)d{grey} - {white}%(message)s"
 
     FORMATS = {
         logging.INFO: base_format.format(level_color=green),
