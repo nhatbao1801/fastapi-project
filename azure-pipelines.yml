@@ -1,0 +1,38 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  - dev
+
+resources:
+  - repo: self
+
+variables:
+  tag: "$(Build.BuildId)"
+  # Agent VM image name
+  vmImageName: "ubuntu-latest"
+
+stages:
+  - stage: Build
+    displayName: "Build and Push Stage"
+    jobs:
+      - job: Build
+        displayName: Build
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          - task: ArchiveFiles@2
+            inputs:
+              rootFolderOrFile: "$(Build.Repository.LocalPath)"
+              includeRootFolder: true
+              archiveType: "zip"
+              archiveFile: "$(Build.Repository.LocalPath)/$(Build.BuildId).zip"
+              replaceExistingArchive: true
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: "$(Build.Repository.LocalPath)/$(Build.BuildId).zip"
+              ArtifactName: "drop"
+              publishLocation: "Container"
