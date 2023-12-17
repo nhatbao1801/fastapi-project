@@ -13,4 +13,6 @@ RUN python -m pip install -r requirements.txt
 WORKDIR /app
 COPY . /app
 
-CMD ["uvicorn", "--host", "0.0.0.0", "--port", "8081", "main:app"]
+RUN chmod +x run.sh
+
+CMD ["./run.sh"]

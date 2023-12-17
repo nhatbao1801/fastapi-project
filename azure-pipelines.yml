@@ -12,29 +12,76 @@ pool:
   name: agent-build
 
 variables:
-  tag: "$(Build.BuildId)"
-  # Agent VM image name
-  vmImageName: "ubuntu-latest"
-
+  tag: "latest"
+  # Agent Pool Self-host
+  MyAgentPool: "agent-build"
+  dockerfilePath: "Dockerfile"
+  dockerRegistryServiceConnection: "alitaa-arc-conn"
+  imageRepository: "alitaagptdocker"
+  k8sNamespace: "alitaa-aks-ns"
+  k8sConnectionName: "private_aks_conn"
+  imagePullSecret: alitaa-azure-docker-registry
+  
 stages:
   - stage: Build
-    displayName: "Build and Push Stage"
-    jobs:
-      - job: Build
-        displayName: Build
-        pool:
-          vmImage: $(vmImageName)
-        steps:
-          - task: ArchiveFiles@2
-            inputs:
-              rootFolderOrFile: "$(Build.Repository.LocalPath)"
-              includeRootFolder: true
-              archiveType: "zip"
-              archiveFile: "$(Build.Repository.LocalPath)/$(Build.BuildId).zip"
-              replaceExistingArchive: true
+    displayName: Build stage
+    jobs:  
+    - job: Build
+      displayName: Build job
+      pool: agent-build
+      steps:
+      - task: Docker@2
+        displayName: Build and push an image to container registry
+        inputs:
+          command: buildAndPush
+          repository: $(imageRepository)
+          dockerfile: $(dockerfilePath)
+          containerRegistry: $(dockerRegistryServiceConnection)
+          tags: |
+            $(tag)
 
-          - task: PublishBuildArtifacts@1
-            inputs:
-              PathtoPublish: "$(Build.Repository.LocalPath)/$(Build.BuildId).zip"
-              ArtifactName: "drop"
-              publishLocation: "Container"
+      - task: PublishPipelineArtifact@1
+        displayName: Publish Artifact
+        inputs:
+          targetPath: 'deploy'
+          artifact: 'manifests'
+          publishLocation: 'pipeline'
+
+  - stage: Deploy
+    displayName: Deploy stage
+    dependsOn: Build
+    jobs:
+    - deployment: Deploy
+      displayName: Deploy job
+      pool: agent-build
+      environment: 'alitaa-aks-env'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - task: DownloadPipelineArtifact@2
+              inputs:
+                artifactName: 'manifests'
+                downloadPath: '$(System.ArtifactsDirectory)/manifests'
+            - task: KubernetesManifest@0
+              displayName: Create imagePullSecret
+              inputs:
+                action: createSecret
+                secretName: $(imagePullSecret)
+                kubernetesServiceConnection: '$(k8sConnectionName)'
+                namespace: $(k8sNamespace)
+                dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
+            - task: KubernetesManifest@0
+              displayName: Deploy to Kubernetes cluster
+              inputs:
+                action: deploy
+                kubernetesServiceConnection: '$(k8sConnectionName)'
+                namespace: $(k8sNamespace)
+                manifests: |
+                  $(System.ArtifactsDirectory)/manifests/deployment.yaml
+                  $(System.ArtifactsDirectory)/manifests/service.yaml
+                  $(System.ArtifactsDirectory)/manifests/horizontalautoscaler.yaml
+                imagePullSecrets: |
+                  $(imagePullSecret)
+                containers: |
+                  $(containerRegistry)/$(imageRepository):$(tag)

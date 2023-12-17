@@ -1,0 +1,16 @@
+# service type loadbalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alitaa-be-gpt-svc
+  namespace: alitaa-aks-ns
+spec:
+  selector:
+    app: alitaa-be-gpt-app
+  ports:
+    - protocol: TCP
+      name: alitaa-be-gpt-app
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer

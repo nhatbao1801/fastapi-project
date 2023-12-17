@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alitaa-be-gpt
+  labels:
+    app: alitaa-be-gpt-app
+  namespace: alitaa-aks-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alitaa-be-gpt-app
+  template:
+    metadata:
+      labels:
+        app: alitaa-be-gpt-app
+    spec:
+      containers:
+        - name: alitaa-be-gpt-app
+          image: alitaaarc.azurecr.io/alitaagptdocker:latest
+          ports:
+            - containerPort: 8000
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: alitaa-backend-gpt-configmap
+            # - secretRef:
+            #     name: alitaa-backend-gpt-secret
+          resources:
+            requests:
+              cpu: 300m
