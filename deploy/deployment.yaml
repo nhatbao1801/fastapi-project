@@ -1,29 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: alitaa-be-gpt
+  name: #{Build.BuildBranch}#-deployment
   labels:
-    app: alitaa-be-gpt-app
-  namespace: alitaa-aks-ns
+    app: #{Build.BuildBranch}#
+  namespace: #{Build.NameSpace}#
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: alitaa-be-gpt-app
+      app: #{Build.BuildBranch}#
   template:
     metadata:
       labels:
-        app: alitaa-be-gpt-app
+        app: #{Build.BuildBranch}#
     spec:
       containers:
-        - name: alitaa-be-gpt-app
-          image: alitaaarc.azurecr.io/alitaagptdocker:latest
+        - name: #{Build.AppName}#
+          image: #{Build.BuildURLImage}#:#{Build.BuildId}#
           ports:
             - containerPort: 8000
           imagePullPolicy: Always
           envFrom:
             - configMapRef:
-                name: alitaa-backend-gpt-configmap
+                name: #{Build.BuildBranch}#-configmap
             # - secretRef:
             #     name: alitaa-backend-gpt-secret
           resources:

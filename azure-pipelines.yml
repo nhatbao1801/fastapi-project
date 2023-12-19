@@ -1,10 +1,7 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
   - dev
+  - test
+  - uat
 
 resources:
   - repo: self
@@ -12,76 +9,27 @@ pool:
   name: agent-build
 
 variables:
-  tag: "latest"
+  tag: "$(Build.BuildId)"
   # Agent Pool Self-host
   MyAgentPool: "agent-build"
-  dockerfilePath: "Dockerfile"
-  dockerRegistryServiceConnection: "alitaa-arc-conn"
-  imageRepository: "alitaagptdocker"
-  k8sNamespace: "alitaa-aks-ns"
-  k8sConnectionName: "private_aks_conn"
-  imagePullSecret: alitaa-azure-docker-registry
   
 stages:
   - stage: Build
-    displayName: Build stage
-    jobs:  
-    - job: Build
-      displayName: Build job
-      pool: agent-build
-      steps:
-      - task: Docker@2
-        displayName: Build and push an image to container registry
-        inputs:
-          command: buildAndPush
-          repository: $(imageRepository)
-          dockerfile: $(dockerfilePath)
-          containerRegistry: $(dockerRegistryServiceConnection)
-          tags: |
-            $(tag)
-
-      - task: PublishPipelineArtifact@1
-        displayName: Publish Artifact
-        inputs:
-          targetPath: 'deploy'
-          artifact: 'manifests'
-          publishLocation: 'pipeline'
-
-  - stage: Deploy
-    displayName: Deploy stage
-    dependsOn: Build
+    displayName: "Build Artifacts Stage"
     jobs:
-    - deployment: Deploy
-      displayName: Deploy job
-      pool: agent-build
-      environment: 'alitaa-aks-env'
-      strategy:
-        runOnce:
-          deploy:
-            steps:
-            - task: DownloadPipelineArtifact@2
-              inputs:
-                artifactName: 'manifests'
-                downloadPath: '$(System.ArtifactsDirectory)/manifests'
-            - task: KubernetesManifest@0
-              displayName: Create imagePullSecret
-              inputs:
-                action: createSecret
-                secretName: $(imagePullSecret)
-                kubernetesServiceConnection: '$(k8sConnectionName)'
-                namespace: $(k8sNamespace)
-                dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
-            - task: KubernetesManifest@0
-              displayName: Deploy to Kubernetes cluster
-              inputs:
-                action: deploy
-                kubernetesServiceConnection: '$(k8sConnectionName)'
-                namespace: $(k8sNamespace)
-                manifests: |
-                  $(System.ArtifactsDirectory)/manifests/deployment.yaml
-                  $(System.ArtifactsDirectory)/manifests/service.yaml
-                  $(System.ArtifactsDirectory)/manifests/horizontalautoscaler.yaml
-                imagePullSecrets: |
-                  $(imagePullSecret)
-                containers: |
-                  $(containerRegistry)/$(imageRepository):$(tag)
+      - job: Build
+        displayName: Build Artifacts
+        pool: $(MyAgentPool)
+        steps:
+          - task: ArchiveFiles@2
+            inputs:
+              rootFolderOrFile: "$(Build.Repository.LocalPath)"
+              includeRootFolder: true
+              archiveType: "zip"
+              archiveFile: "$(Build.Repository.LocalPath)/$(Build.BuildId).zip"
+              replaceExistingArchive: true
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: "$(Build.Repository.LocalPath)/$(Build.BuildId).zip"
+              ArtifactName: "drop"
+              publishLocation: "Container"
