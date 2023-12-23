@@ -11,8 +11,7 @@ class IntentComponent:
         try:
             response_data = call_completion(question=sender_data,
                                             histories=conversation_history)
-            return response_data
-            #return JSONResponse(content=response_data, status_code=200)
+            return JSONResponse(content=response_data, status_code=200)
         except Exception as e:
             logger.error(
                 "Exception in detect from sender and histories: %s", e)
