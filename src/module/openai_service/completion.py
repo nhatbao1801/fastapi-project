@@ -1,5 +1,10 @@
 from typing import Any
 from openai import AzureOpenAI
+from src.config.system import cfg_system as settings
+from azure.search.documents.models import VectorizedQuery
+from openai import AzureOpenAI
+from src.config.constant import Role
+from src.module.openai_service.document_questions import hybrid_search
 import json
 from tenacity import (
     retry,
@@ -15,9 +20,9 @@ from src.module.openai_service.prompt import PromptTemplate
 prompt = PromptTemplate()
 
 client = AzureOpenAI(
-    azure_endpoint=settings.OPENAI_BASE,
-    api_key=settings.OPENAI_KEY,
-    api_version=settings.OPENAI_API_VERSION
+    azure_endpoint=settings.OPENAI_BASE, 
+    api_key=settings.OPENAI_API_KEY, 
+    api_version=settings.OPENAI_API_VERSION 
 )
 
 
@@ -111,4 +116,110 @@ def call_completion(question="", histories=None) -> Any:
                                            temperature=settings.TEMPERATURE)
 
     logger.info("[x] RESPONSE: %s", message_response)
-    return message_response
+
+    conversation_history= ""
+    count=0
+    if len(histories) > 2 :
+        for each in histories:
+            conversation_history = conversation_history + json.dumps(each) + "\n"
+            count = count+1
+            if (count>settings.MAX_PREVIOUS_QUESTIONS*2) :
+                break
+
+    language = settings.DEFAULT_LANGUAGE
+    if 'vi' not in message_response['language'] and 'en' in message_response['language']:
+        language = 'english'
+
+    if 'generic' in message_response['purpose']:
+        return generic_answer(
+            question,
+            histories = conversation_history, 
+            user_language = language, 
+            intention = message_response['reasoning'])
+    else:
+        return document_related_answers(
+            message_response['standalone_query'], 
+            histories = conversation_history, 
+            user_language = language,
+            intention = message_response['reasoning'])
+
+
+def generic_answer(standalone_query = "",histories=None, user_language=settings.DEFAULT_LANGUAGE, intention = "generic"):
+    client = AzureOpenAI(
+    api_key = settings.OPENAI_API_KEY,  
+    api_version = settings.OPENAI_API_VERSION,
+    azure_endpoint = settings.OPENAI_BASE
+    )
+    messages =[]
+    dialog = {
+        "role" : Role.SYSTEM,
+        "content": prompt.get_system_prompt_generic(intention = intention, language = user_language)
+    }
+  
+    messages.append(dialog)
+    dialog = {
+        "role": Role.ASSISTANT,
+        "content": prompt.get_assistant_prompt_generic(conversation_history=histories)
+        }
+    messages.append(dialog)
+    
+    dialog = {
+        "role": Role.USER,
+        "content": standalone_query 
+    }
+    messages.append(dialog)
+    response = client.chat.completions.create(
+        model = settings.OPENAI_CHAT_MODEL,
+        messages=messages,
+        max_tokens=settings.MAX_TOKENS_GENERIC,
+        temperature=settings.TEMPERATURE_GENERIC
+    )
+    return response
+
+def document_related_answers(standalone_query="" ,histories = None, user_language = "vietnamese",intention = "qna"):
+    search_results = hybrid_search(query=standalone_query)
+    max_rrf_point=0
+    for each in search_results :
+        max_rrf_point = each["@search.reranker_score"]
+        break
+    if (max_rrf_point<settings.QNA_LIMIT_SCORE):
+        return generic_answer(standalone_query = standalone_query, histories = histories, user_language=user_language,intention = intention)
+    
+    input_text = ""
+    count=0
+    for result in search_results:
+        count=count+1
+        if count>settings.MAX_INPUT_DOCUMENTS:
+            break
+        input_text = input_text + result['content'] + " "
+    
+    client = AzureOpenAI(
+        api_key = settings.OPENAI_API_KEY,  
+        api_version = settings.OPENAI_API_VERSION,
+        azure_endpoint = settings.OPENAI_BASE
+    )
+    messages =[]
+    dialog = {
+        "role" : Role.SYSTEM,
+        "content": prompt.get_system_prompt_qna(intention = intention, language = user_language)
+        }
+    messages.append(dialog)
+    dialog = {
+        "role": Role.USER,
+        "content": prompt.get_user_prompt_qna(user_language= user_language, input_text=input_text, standalone_query= standalone_query)  
+    }
+    messages.append(dialog)
+    if len(histories)>0:
+        dialog = {
+            "role": Role.ASSISTANT,
+            "content": prompt.get_assistant_prompt_qna(conversation_history= histories)
+        }
+        messages.append(dialog)
+
+    response = client.chat.completions.create(
+        model = settings.OPENAI_CHAT_MODEL,
+        messages=messages,
+        max_tokens=settings.MAX_TOKENS_QNA,
+        temperature=settings.TEMPERATURE_QNA
+    )
+    return response
