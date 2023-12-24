@@ -134,16 +134,17 @@ def call_completion(question="", histories=None) -> Any:
 
     if 'generic' in message_response['purpose']:
         return generic_answer(
-            question,
+            standalone_query = question,
             histories = conversation_history, 
             user_language = language, 
             intention = message_response['reasoning'])
     else:
         return document_related_answers(
-            message_response['standalone_query'], 
+            standalone_query = message_response['standalone_query'], 
             histories = conversation_history, 
             user_language = language,
-            intention = message_response['reasoning'])
+            intention = message_response['reasoning'],
+            original_questions=question)
 
 
 def generic_answer(standalone_query = "",histories=None, user_language=settings.DEFAULT_LANGUAGE, intention = "generic"):
@@ -185,7 +186,7 @@ def generic_answer(standalone_query = "",histories=None, user_language=settings.
     
     return answer
 
-def document_related_answers(standalone_query="" ,histories = None, user_language = "vietnamese",intention = "qna"):
+def document_related_answers(standalone_query="" ,histories = None, user_language = "vietnamese",intention = "qna",original_questions = ""):
     start_time = time.time()
     search_results = hybrid_search(query=standalone_query)
     max_rrf_point=0
@@ -193,7 +194,10 @@ def document_related_answers(standalone_query="" ,histories = None, user_languag
         max_rrf_point = each["@search.reranker_score"]
         break
     if (max_rrf_point<settings.QNA_LIMIT_SCORE):
-        return generic_answer(standalone_query = standalone_query, histories = histories, user_language=user_language,intention = intention)
+        return generic_answer(standalone_query = standalone_query, 
+        histories = histories, 
+        user_language=user_language,
+        intention = intention)
     
     input_text = ""
     count=0
@@ -215,16 +219,15 @@ def document_related_answers(standalone_query="" ,histories = None, user_languag
         }
     messages.append(dialog)
     dialog = {
+            "role": Role.ASSISTANT,
+            "content": prompt.get_assistant_prompt_qna(conversation_history= histories, retrived_doc=input_text)
+        }
+    messages.append(dialog)
+    dialog = {
         "role": Role.USER,
-        "content": prompt.get_user_prompt_qna(user_language= user_language, input_text=input_text, standalone_query= standalone_query)  
+        "content": prompt.get_user_prompt_qna(user_language= user_language, original_questions = original_questions)  
     }
     messages.append(dialog)
-    if len(histories)>0:
-        dialog = {
-            "role": Role.ASSISTANT,
-            "content": prompt.get_assistant_prompt_qna(conversation_history= histories)
-        }
-        messages.append(dialog)
 
     response = client.chat.completions.create(
         model = settings.OPENAI_CHAT_MODEL,
