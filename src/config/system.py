@@ -44,6 +44,7 @@ class SystemConfig:
     MAX_TOKENS: int = int(os.environ["GPT_MAX_TOKENS"])
     REQUEST_TIMEOUT: int = int(os.environ["GPT_REQUEST_TIMEOUT"])
     MAX_RETRIES = int(os.environ["GPT_MAX_RETRIES"])
+    SUM_TEMPERATURE: float = float(os.environ["GPT_SUMMARY_TEMPERATURE"])
 
 
 cfg_system = SystemConfig()

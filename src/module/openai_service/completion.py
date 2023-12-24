@@ -5,6 +5,7 @@ from azure.search.documents.models import VectorizedQuery
 from openai import AzureOpenAI
 from src.config.constant import Role
 from src.module.openai_service.document_questions import hybrid_search
+from langdetect import detect
 import json
 import time
 from datetime import datetime
@@ -41,13 +42,13 @@ def build_history_chat_msg(question,
 
     # ! Just force return JSON, not good recommendation !!!
     # ! I can be fix with model 1106
-    rule = "Please don't give an answer or comment. Just response in JSON format."
+    rule = "Please don't give an answer or comment. Just response in JSON format. You do not response in string format"
     rule_based = {
         "role": Role.USER,
         "content": rule
     }
     messages.append(rule_based)
-    obey = "I won't answer any question. I won't even attempt to give answers. And I will always response in JSON format"
+    obey = "I won't answer any question. I won't even attempt to give answers. And I will always response in JSON format. You do not response in string format"
     obey_rule = {
         "role": Role.ASSISTANT,
         "content": obey
@@ -100,9 +101,34 @@ def get_chat_completion(messages: list[dict[str, str]],
 
         completion = client.chat.completions.create(**params)
         message_content = completion.choices[0].message.content
+
+        if message_content is json_object:
+            message_content = json.loads(message_content)
+        else:
+            message = []
+            system_message = prompt.get_system_prompt()
+            dialog = {
+                "role": Role.SYSTEM,
+                "content": system_message
+            }
+            message.append(dialog)
+            dialog = {
+                "role": Role.USER,
+                "content": message_content
+            }
+            message.append(dialog)
+            params = {
+                'model': settings.OPENAI_CHAT_MODEL,
+                'messages': message,
+                'max_tokens': max_tokens,
+                'temperature': temperature,
+                # 'stop': stop,
+                # 'seed': settings.OPENAI_SEED,
+            }
+            completion = client.chat.completions.create(**params)
+            message_content = completion.choices[0].message.content
+            message_content = json.loads(message_content)
         logger.info("[x] completion response: %s", message_content)
-        # if json_object:
-        message_content = json.loads(message_content)
         return message_content
 
     except Exception as e:
@@ -138,6 +164,13 @@ def call_completion(question="", histories=None) -> Any:
             histories = conversation_history, 
             user_language = language, 
             intention = message_response['reasoning'])
+    elif 'summarize' in message_response['purpose']:
+        message_response['standalone_query'] = messages[-1]['content']
+        return summarize(
+            message_response['standalone_query'],
+            histories = conversation_history,
+            user_language=language
+        )
     else:
         return document_related_answers(
             standalone_query = message_response['standalone_query'], 
@@ -235,6 +268,94 @@ def document_related_answers(standalone_query="" ,histories = None, user_languag
         max_tokens=settings.MAX_TOKENS_QNA,
         temperature=settings.TEMPERATURE_QNA
     )
+    
+    answer = {}
+    answer['answer'] = response.choices[0].message.content
+    answer['timestamp'] = str(datetime.now())
+    answer['run_time'] = round(time.time() - start_time, 3)
+
+    return answer
+
+def summarize(standalone_query="", histories=None, user_language='vietnamese', intention = 'summarize'):
+    start_time = time.time()
+    client = AzureOpenAI(
+        api_key = settings.OPENAI_API_KEY,  
+        api_version = settings.OPENAI_API_VERSION,
+        azure_endpoint = settings.OPENAI_BASE
+    )
+    text = standalone_query
+    text_language = detect(standalone_query)
+    if text_language == 'vi':
+        text_language = 'vietnamese'
+    else:
+        text_language = 'english'
+    if user_language != text_language:
+        messages_detect_text = []
+        sys_detect_text = prompt.get_system_summarize_text(text_language)
+        dialog = {
+            "role": Role.SYSTEM,
+            "content": sys_detect_text
+        }
+        messages_detect_text.append(dialog)
+        user_detect_text = prompt.get_user_summarize_text(text)
+        dialog = {
+            "role": Role.USER,
+            "content": user_detect_text
+        }
+        messages_detect_text.append(dialog)
+
+        response = client.chat.completions.create(
+            model = settings.OPENAI_CHAT_MODEL,
+            messages=messages_detect_text,
+            max_tokens=settings.MAX_TOKENS,
+            temperature=settings.TEMPERATURE
+        )
+        text = response.choices[0].message.content
+    messages =[]
+    system_message_summarization = prompt.get_system_prompt_summarization()
+    dialog = {
+        "role" : Role.SYSTEM,
+        "content": system_message_summarization
+    }
+    messages.append(dialog)
+    assistant_message_summarization = prompt.get_assistant_prompt_summarization()
+    dialog = {
+        "role": Role.ASSISTANT,
+        "content": assistant_message_summarization
+    }
+    user_message_summarization = prompt.get_user_prompt_summarization(text_language, text)
+    dialog = {
+        "role": Role.USER,
+        "content": user_message_summarization
+    }
+    messages.append(dialog)
+    response = client.chat.completions.create(
+        model = settings.OPENAI_CHAT_MODEL,
+        messages=messages,
+        max_tokens=settings.MAX_TOKENS,
+        temperature=settings.SUM_TEMPERATURE
+    )
+
+    if user_language != text_language:
+        messages_translate_text = []
+        system_message_translation = prompt.get_system_prompt_translate(user_language)
+        dialog = {
+            'role': Role.SYSTEM,
+            'content': system_message_translation
+        }
+        messages_translate_text.append(dialog)
+        user_message_translation = prompt.get_user_prompt_translate(text, user_language)
+        dialog = {
+            'role': Role.USER,
+            'content': user_message_translation
+        }
+        messages_translate_text.append(dialog)
+        response = client.chat.completions.create(
+            model = settings.OPENAI_CHAT_MODEL,
+            messages=messages_translate_text,
+            max_tokens=settings.MAX_TOKENS,
+            temperature=settings.TEMPERATURE
+        )
     
     answer = {}
     answer['answer'] = response.choices[0].message.content
