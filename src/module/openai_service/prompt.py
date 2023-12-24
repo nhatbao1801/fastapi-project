@@ -12,7 +12,7 @@ Given the following conversation and a user's follow-up, rephrase the follow-up 
 You must response in JSON format, all fields are mandatory:
 {
     "reasoning":"explain the user intent",
-    "purpose":"one of generic, summarize ,  document_related, user_preference",
+    "purpose":"one of generic, summarize , qna, document_related, user_preference",
     "language":"primary language of user query vi, en ",
     "standalone_query": "Generate a summarized message/question of the user's message in the same language and style plus the chat history."
 }

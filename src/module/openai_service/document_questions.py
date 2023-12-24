@@ -9,7 +9,7 @@ from src.config.constant import Role
 
 def get_embeddings(text: str):
     open_ai_endpoint = settings.OPENAI_BASE
-    open_ai_key = settings.OPENAI_KEY
+    open_ai_key = settings.OPENAI_API_KEY
 
     client = openai.AzureOpenAI(
         azure_endpoint=open_ai_endpoint,

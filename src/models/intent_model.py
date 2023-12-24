@@ -4,5 +4,5 @@ from pydantic import BaseModel
 
 
 class IntentModel(BaseModel):
-    histories: Optional[List[Dict[str, str]]] = []
+    history: Optional[List] = []
     question: str

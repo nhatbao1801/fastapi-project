@@ -6,6 +6,8 @@ from openai import AzureOpenAI
 from src.config.constant import Role
 from src.module.openai_service.document_questions import hybrid_search
 import json
+import time
+from datetime import datetime
 from tenacity import (
     retry,
     wait_random_exponential,
@@ -145,6 +147,7 @@ def call_completion(question="", histories=None) -> Any:
 
 
 def generic_answer(standalone_query = "",histories=None, user_language=settings.DEFAULT_LANGUAGE, intention = "generic"):
+    start_time = time.time()
     client = AzureOpenAI(
     api_key = settings.OPENAI_API_KEY,  
     api_version = settings.OPENAI_API_VERSION,
@@ -174,9 +177,16 @@ def generic_answer(standalone_query = "",histories=None, user_language=settings.
         max_tokens=settings.MAX_TOKENS_GENERIC,
         temperature=settings.TEMPERATURE_GENERIC
     )
-    return response
+
+    answer = {}
+    answer['answer'] = response.choices[0].message.content
+    answer['timestamp'] = str(datetime.now())
+    answer['run_time'] = round(time.time() - start_time, 3)
+    
+    return answer
 
 def document_related_answers(standalone_query="" ,histories = None, user_language = "vietnamese",intention = "qna"):
+    start_time = time.time()
     search_results = hybrid_search(query=standalone_query)
     max_rrf_point=0
     for each in search_results :
@@ -222,4 +232,10 @@ def document_related_answers(standalone_query="" ,histories = None, user_languag
         max_tokens=settings.MAX_TOKENS_QNA,
         temperature=settings.TEMPERATURE_QNA
     )
-    return response
+    
+    answer = {}
+    answer['answer'] = response.choices[0].message.content
+    answer['timestamp'] = str(datetime.now())
+    answer['run_time'] = round(time.time() - start_time, 3)
+
+    return answer
