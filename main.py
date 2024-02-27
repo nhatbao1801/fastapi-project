@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.utils.logger import logger
 
-app = FastAPI(title="GAM.DCI ALITAA API")
+app = FastAPI(title="API")
 
 origins = ["*"]
 
